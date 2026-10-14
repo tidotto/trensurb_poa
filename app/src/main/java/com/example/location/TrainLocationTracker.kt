@@ -37,6 +37,26 @@ class TrainLocationTracker(private val context: Context) {
 
     private var fusedCallback: LocationCallback? = null
     private var systemLocationListener: LocationListener? = null
+    private var smoothedSpeedKmh: Float = 0f
+
+    companion object {
+        const val UPDATE_INTERVAL_MS = 2500L
+        const val FASTEST_INTERVAL_MS = 1500L
+        const val MIN_DISPLACEMENT_METERS = 1.0f
+        const val STOPPED_SPEED_THRESHOLD_KMH = 4.0f // Filtro antirruído: < 4 km/h considera parado (0 km/h)
+
+        fun applySpeedFilter(rawSpeedKmh: Float, currentSmoothed: Float = 0f): Float {
+            if (rawSpeedKmh < STOPPED_SPEED_THRESHOLD_KMH) {
+                return 0f
+            }
+            // Suavização por Média Móvel Exponencial (EMA)
+            return if (currentSmoothed <= 0f) {
+                rawSpeedKmh
+            } else {
+                (currentSmoothed * 0.4f + rawSpeedKmh * 0.6f)
+            }
+        }
+    }
 
     @SuppressLint("MissingPermission")
     fun startTracking() {
@@ -45,10 +65,10 @@ class TrainLocationTracker(private val context: Context) {
         try {
             val locationRequest = LocationRequest.Builder(
                 Priority.PRIORITY_HIGH_ACCURACY,
-                3000L
+                UPDATE_INTERVAL_MS
             ).apply {
-                setMinUpdateIntervalMillis(1500L)
-                setMinUpdateDistanceMeters(3f)
+                setMinUpdateIntervalMillis(FASTEST_INTERVAL_MS)
+                setMinUpdateDistanceMeters(MIN_DISPLACEMENT_METERS)
                 setWaitForAccurateLocation(false)
             }.build()
 
@@ -66,7 +86,7 @@ class TrainLocationTracker(private val context: Context) {
                 Looper.getMainLooper()
             ).addOnSuccessListener {
                 _isTracking.value = true
-                Log.d("TrainLocationTracker", "Fused location updates started")
+                Log.d("TrainLocationTracker", "Fused location updates started (interval: 2500ms)")
             }.addOnFailureListener { e ->
                 Log.w("TrainLocationTracker", "Fused location updates failed, falling back to LocationManager: ${e.message}")
                 startSystemLocationFallback()
@@ -114,8 +134,8 @@ class TrainLocationTracker(private val context: Context) {
 
             locationManager.requestLocationUpdates(
                 provider,
-                3000L,
-                3f,
+                UPDATE_INTERVAL_MS,
+                MIN_DISPLACEMENT_METERS,
                 listener,
                 Looper.getMainLooper()
             )
@@ -131,12 +151,15 @@ class TrainLocationTracker(private val context: Context) {
         _hasGpsFix.value = true
 
         // Speed in m/s converted to km/h
-        val speedKmh = if (location.hasSpeed()) {
+        val rawSpeedKmh = if (location.hasSpeed()) {
             location.speed * 3.6f
         } else {
             0f
         }
-        _speedKmH.value = speedKmh
+
+        // Aplica filtro antirruído (< 4 km/h = 0 km/h) e suavização EMA
+        smoothedSpeedKmh = applySpeedFilter(rawSpeedKmh, smoothedSpeedKmh)
+        _speedKmH.value = smoothedSpeedKmh
     }
 
     fun stopTracking() {
@@ -151,5 +174,7 @@ class TrainLocationTracker(private val context: Context) {
         }
         _isTracking.value = false
         _hasGpsFix.value = false
+        smoothedSpeedKmh = 0f
+        _speedKmH.value = 0f
     }
 }

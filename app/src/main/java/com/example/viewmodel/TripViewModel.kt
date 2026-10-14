@@ -11,6 +11,7 @@ import com.example.model.Station
 import com.example.model.StationStatus
 import com.example.model.TrainDirection
 import com.example.model.TrensurbData
+import com.example.service.TrainTrackingService
 import com.example.util.AlertHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -76,7 +77,9 @@ data class TripUiState(
     val selectedStationDetails: Station? = null,
     val recentStationPassedId: Int? = null,
     val diagramThemeMode: DiagramThemeMode = DiagramThemeMode.DARK,
-    val isHighContrastMode: Boolean = false
+    val isHighContrastMode: Boolean = false,
+    val isPreciseLocationGranted: Boolean = true,
+    val isBackgroundTrackingEnabled: Boolean = false
 )
 
 class TripViewModel(application: Application) : AndroidViewModel(application) {
@@ -92,6 +95,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
     private var lastApproachingChimedStationId: Int? = null
     private var alertTriggeredForStationId: Int? = null
     private var approachingTriggeredForStationId: Int? = null
+    private var lockedStation: Station? = null
 
     init {
         // Load persisted preferences
@@ -129,10 +133,15 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update { it.copy(speedKmH = speed) }
             }
         }
+        viewModelScope.launch {
+            TrainTrackingService.isServiceRunning.collect { running ->
+                _uiState.update { it.copy(isBackgroundTrackingEnabled = running) }
+            }
+        }
     }
 
-    fun onPermissionGranted() {
-        _uiState.update { it.copy(hasPermission = true) }
+    fun onPermissionGranted(isPrecise: Boolean = true) {
+        _uiState.update { it.copy(hasPermission = true, isPreciseLocationGranted = isPrecise) }
         locationTracker.startTracking()
     }
 
@@ -173,6 +182,9 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
                 arrivalAlertTriggered = false,
                 destinationAlertStage = DestinationAlertStage.NONE
             )
+        }
+        if (_uiState.value.isBackgroundTrackingEnabled) {
+            updateLiveTrackingNotification(_uiState.value)
         }
     }
 
@@ -229,7 +241,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         val stations = TrensurbData.STATIONS
         if (stations.isEmpty()) return
 
-        // 1. Find distances to all stations
+        // 1. Calculate distances to all stations
         val sortedByDistance = stations.map { station ->
             val dist = station.distanceTo(location.latitude, location.longitude)
             station to dist
@@ -239,28 +251,72 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         val closestStation = closestPair.first
         val closestDistance = closestPair.second
 
-        val isAtStation = closestDistance <= 250f
-        val currentStatus = if (isAtStation) StationStatus.AT_STATION else StationStatus.IN_TRANSIT
+        // Live speed from tracker or directly from location
+        val rawSpeedKmh = if (location.hasSpeed()) location.speed * 3.6f else locationTracker.speedKmH.value
+
+        // Histerese e travamento de estação:
+        // Entrada: <= 250m imediato, ou <= 350m com velocidade baixa (<= 15 km/h)
+        // Saída: > 420m ou (> 350m com velocidade de cruzeiro > 15 km/h)
+        val isCurrentlyAtStation = _uiState.value.currentStatus == StationStatus.AT_STATION
+        val currentlyLocked = lockedStation
+
+        val currentStatus: StationStatus
+        val activeStation: Station
+        val activeStationDistance: Float
+
+        if (isCurrentlyAtStation && currentlyLocked != null) {
+            val distToLocked = currentlyLocked.distanceTo(location.latitude, location.longitude)
+            if (distToLocked > 420f || (distToLocked > 350f && rawSpeedKmh > 15f)) {
+                currentStatus = StationStatus.IN_TRANSIT
+                lockedStation = null
+                activeStation = closestStation
+                activeStationDistance = closestDistance
+            } else {
+                currentStatus = StationStatus.AT_STATION
+                activeStation = currentlyLocked
+                activeStationDistance = distToLocked
+            }
+        } else {
+            if (closestDistance <= 250f || (closestDistance <= 350f && rawSpeedKmh <= 15f)) {
+                currentStatus = StationStatus.AT_STATION
+                lockedStation = closestStation
+                activeStation = closestStation
+                activeStationDistance = closestDistance
+            } else {
+                currentStatus = StationStatus.IN_TRANSIT
+                lockedStation = null
+                activeStation = closestStation
+                activeStationDistance = closestDistance
+            }
+        }
+
+        val isAtStation = currentStatus == StationStatus.AT_STATION
 
         // 2. Determine Train Direction
         var detectedDirection = _uiState.value.direction
 
         val destination = _uiState.value.destinationStation
         if (destination != null) {
-            detectedDirection = if (destination.id > closestStation.id) {
+            detectedDirection = if (destination.id > activeStation.id) {
                 TrainDirection.TO_NOVO_HAMBURGO
-            } else if (destination.id < closestStation.id) {
+            } else if (destination.id < activeStation.id) {
                 TrainDirection.TO_MERCADO
             } else {
                 detectedDirection
             }
         } else {
-            previousLocation?.let { prev ->
-                val latDelta = location.latitude - prev.latitude
-                if (latDelta > 0.0003) {
-                    detectedDirection = TrainDirection.TO_NOVO_HAMBURGO
-                } else if (latDelta < -0.0003) {
-                    detectedDirection = TrainDirection.TO_MERCADO
+            if (activeStation.id == 1) {
+                detectedDirection = TrainDirection.TO_NOVO_HAMBURGO
+            } else if (activeStation.id == 22) {
+                detectedDirection = TrainDirection.TO_MERCADO
+            } else {
+                previousLocation?.let { prev ->
+                    val latDelta = location.latitude - prev.latitude
+                    if (latDelta > 0.0003) {
+                        detectedDirection = TrainDirection.TO_NOVO_HAMBURGO
+                    } else if (latDelta < -0.0003) {
+                        detectedDirection = TrainDirection.TO_MERCADO
+                    }
                 }
             }
         }
@@ -270,35 +326,39 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         val nextStation: Station? = when (detectedDirection) {
             TrainDirection.TO_NOVO_HAMBURGO -> {
                 if (isAtStation) {
-                    stations.find { it.id == closestStation.id + 1 } ?: closestStation
+                    stations.find { it.id == activeStation.id + 1 } ?: activeStation
                 } else {
-                    if (closestStation.latitude < location.latitude) {
-                        stations.find { it.id == closestStation.id + 1 } ?: closestStation
+                    if (location.latitude > activeStation.latitude) {
+                        stations.find { it.id == activeStation.id + 1 } ?: activeStation
                     } else {
-                        closestStation
+                        activeStation
                     }
                 }
             }
             TrainDirection.TO_MERCADO -> {
                 if (isAtStation) {
-                    stations.find { it.id == closestStation.id - 1 } ?: closestStation
+                    stations.find { it.id == activeStation.id - 1 } ?: activeStation
                 } else {
-                    if (closestStation.latitude > location.latitude) {
-                        stations.find { it.id == closestStation.id - 1 } ?: closestStation
+                    if (location.latitude < activeStation.latitude) {
+                        stations.find { it.id == activeStation.id - 1 } ?: activeStation
                     } else {
-                        closestStation
+                        activeStation
                     }
                 }
             }
             TrainDirection.UNKNOWN -> {
-                sortedByDistance.getOrNull(1)?.first ?: closestStation
+                if (isAtStation) {
+                    stations.find { it.id == activeStation.id + 1 } ?: sortedByDistance.getOrNull(1)?.first ?: activeStation
+                } else {
+                    sortedByDistance.getOrNull(1)?.first ?: activeStation
+                }
             }
         }
 
         val nextStationDistance = nextStation?.distanceTo(location.latitude, location.longitude)
 
         // 4. Precise ETA Calculation using GPS Speed and Distance
-        val gpsSpeedMps = if (location.hasSpeed() && location.speed > 2.0f) location.speed else 0f
+        val gpsSpeedMps = if (location.hasSpeed() && location.speed > 1.1f) location.speed else 0f
         val isMovingAtSpeed = gpsSpeedMps >= 3.5f // ~12.6 km/h or more
 
         // Smooth blended speed: 70% live GPS speed + 30% nominal cruising speed (12.5 m/s = 45 km/h)
@@ -314,7 +374,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         val estimatedMinutesToNext: Int?
 
         if (nextStation != null && nextStationDistance != null) {
-            if (nextStationDistance < 150f || (isAtStation && closestStation.id == nextStation.id)) {
+            if (nextStationDistance < 150f || (isAtStation && activeStation.id == nextStation.id)) {
                 nextStationEtaFormatted = "Chegando"
                 estimatedMinutesToNext = 1
             } else {
@@ -387,13 +447,17 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
 
         if (destination != null) {
             distanceToDest = destination.distanceTo(location.latitude, location.longitude)
-            stopsRemaining = (destination.id - closestStation.id).let { kotlin.math.abs(it) }
+            stopsRemaining = if (isAtStation && activeStation.id == destination.id) {
+                0
+            } else {
+                (destination.id - activeStation.id).let { kotlin.math.abs(it) }
+            }
             destEtaFormatted = etasMap[destination.id] ?: run {
                 val sec = (distanceToDest / effectiveSpeedMps).roundToInt()
                 if (sec < 60) "< 1 min" else "~${(sec / 60f).roundToInt()} min"
             }
 
-            if (distanceToDest <= 400f || (isAtStation && closestStation.id == destination.id)) {
+            if (distanceToDest <= 400f || (isAtStation && activeStation.id == destination.id)) {
                 if (alertTriggeredForStationId != destination.id) {
                     alertTriggeredForStationId = destination.id
                     alertStage = DestinationAlertStage.ARRIVED
@@ -404,7 +468,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
                         vibrationEnabled = _uiState.value.vibrationEnabled
                     )
                 }
-            } else if ((distanceToDest <= 900f || (nextStation?.id == destination.id && closestStation.id != destination.id)) &&
+            } else if ((distanceToDest <= 900f || (nextStation?.id == destination.id && activeStation.id != destination.id)) &&
                 alertStage == DestinationAlertStage.NONE
             ) {
                 if (approachingTriggeredForStationId != destination.id) {
@@ -423,8 +487,8 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 currentLatitude = location.latitude,
                 currentLongitude = location.longitude,
-                currentStation = closestStation,
-                currentStationDistanceMeters = closestDistance,
+                currentStation = activeStation,
+                currentStationDistanceMeters = activeStationDistance,
                 currentStatus = currentStatus,
                 nextStation = nextStation,
                 nextStationDistanceMeters = nextStationDistance,
@@ -440,6 +504,93 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
                 destinationAlertStage = alertStage
             )
         }
+
+        if (_uiState.value.isBackgroundTrackingEnabled) {
+            updateLiveTrackingNotification(_uiState.value)
+        }
+    }
+
+    fun startBackgroundTracking() {
+        TrainTrackingService.start(getApplication())
+        _uiState.update { it.copy(isBackgroundTrackingEnabled = true) }
+        updateLiveTrackingNotification(_uiState.value)
+    }
+
+    fun stopBackgroundTracking() {
+        TrainTrackingService.stop(getApplication())
+        _uiState.update { it.copy(isBackgroundTrackingEnabled = false) }
+    }
+
+    fun toggleBackgroundTracking() {
+        if (_uiState.value.isBackgroundTrackingEnabled) {
+            stopBackgroundTracking()
+        } else {
+            startBackgroundTracking()
+        }
+    }
+
+    private fun updateLiveTrackingNotification(state: TripUiState) {
+        val title = when {
+            state.currentStatus == StationStatus.AT_STATION && state.currentStation != null ->
+                "🚉 Na Estação: ${state.currentStation.name}"
+            state.nextStation != null ->
+                "🚆 A caminho: ${state.nextStation.name} (${state.nextStationEtaFormatted.ifEmpty { "~2 min" }})"
+            state.recentStationPassedId != null -> {
+                val passed = TrensurbData.STATIONS.firstOrNull { it.id == state.recentStationPassedId }
+                if (passed != null) "🚆 Em trânsito (passou por ${passed.name})" else "🚆 Trensurb em Trânsito"
+            }
+            else -> "🛰️ Trensurb: Rastreando viagem"
+        }
+
+        val text = buildString {
+            if (state.nextStation != null) {
+                append("Próxima: ${state.nextStation.name}")
+                if (state.nextStationEtaFormatted.isNotEmpty()) {
+                    append(" • ETA: ${state.nextStationEtaFormatted}")
+                }
+            } else if (state.currentStation != null) {
+                append("Estação: ${state.currentStation.name}")
+            } else {
+                append("Monitorando localização")
+            }
+            append(" • ${state.speedKmH.roundToInt()} km/h")
+        }
+
+        val bigText = buildString {
+            if (state.currentStatus == StationStatus.AT_STATION && state.currentStation != null) {
+                append("🚉 Na plataforma: ${state.currentStation.name} (${state.currentStation.city})\n")
+            } else if (state.recentStationPassedId != null) {
+                val passed = TrensurbData.STATIONS.firstOrNull { it.id == state.recentStationPassedId }
+                if (passed != null) {
+                    append("📍 Última estação que passou: ${passed.name}\n")
+                }
+            }
+            if (state.nextStation != null) {
+                append("➡️ Próxima parada: ${state.nextStation.name}")
+                val dist = state.nextStationDistanceMeters
+                if (dist != null) {
+                    val km = String.format(java.util.Locale.US, "%.1f", dist / 1000f)
+                    append(" (a $km km)")
+                }
+                if (state.nextStationEtaFormatted.isNotEmpty()) {
+                    append(" • ETA: ${state.nextStationEtaFormatted}")
+                }
+                append("\n")
+            }
+            if (state.destinationStation != null) {
+                append("🎯 Destino: ${state.destinationStation.name}")
+                if (state.stopsRemaining != null) {
+                    append(" (faltam ${state.stopsRemaining} ${if (state.stopsRemaining == 1) "estação" else "estações"})")
+                }
+                if (state.destinationEtaFormatted.isNotEmpty()) {
+                    append(" • Chegada: ~${state.destinationEtaFormatted}")
+                }
+                append("\n")
+            }
+            append("⚡ Velocidade do trem: ${state.speedKmH.roundToInt()} km/h")
+        }
+
+        TrainTrackingService.updateLiveTrip(getApplication(), title, text, bigText)
     }
 
     override fun onCleared() {

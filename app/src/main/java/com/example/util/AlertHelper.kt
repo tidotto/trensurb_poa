@@ -10,6 +10,7 @@ import android.media.AudioManager
 import android.media.RingtoneManager
 import android.media.ToneGenerator
 import android.os.Build
+import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -49,9 +50,27 @@ class AlertHelper(private val context: Context) {
                 enableLights(true)
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 400, 150, 400, 150, 800)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             notificationManager?.createNotificationChannel(channel)
+        }
+    }
+
+    /**
+     * Acende a tela do dispositivo bloqueado durante o alerta de desembarque/aproximação.
+     */
+    fun wakeUpScreen() {
+        try {
+            val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+            @Suppress("DEPRECATION")
+            val wakeLock = powerManager?.newWakeLock(
+                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
+                "trensurb:screen_alert_wakelock"
+            )
+            wakeLock?.acquire(4000L)
+        } catch (e: Exception) {
+            Log.e("AlertHelper", "Could not wake up screen: ${e.message}")
         }
     }
 
@@ -63,6 +82,9 @@ class AlertHelper(private val context: Context) {
         soundEnabled: Boolean = true,
         vibrationEnabled: Boolean = true
     ) {
+        // Acende a tela de bloqueio
+        wakeUpScreen()
+
         // 1. Vibração de alta intensidade (padrão de alerta de chegada)
         if (vibrationEnabled) {
             try {
@@ -108,6 +130,9 @@ class AlertHelper(private val context: Context) {
         soundEnabled: Boolean = true,
         vibrationEnabled: Boolean = true
     ) {
+        // Acende a tela de bloqueio
+        wakeUpScreen()
+
         if (vibrationEnabled) {
             try {
                 vibrator?.let { vib ->
@@ -191,6 +216,7 @@ class AlertHelper(private val context: Context) {
                 .setContentText(message)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setAutoCancel(true)
                 .setContentIntent(pendingIntent)
 

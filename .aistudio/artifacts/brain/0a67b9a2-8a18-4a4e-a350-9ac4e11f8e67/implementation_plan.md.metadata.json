@@ -1,6 +1,6 @@
 {
-  "summary": "Plano de implementação completo para o aplicativo Trensurb Porto Alegre (Guia de Estações por GPS), com detecção de estação atual, próxima parada, diagrama linear estilo metrô, e alertas de desembarque com som e vibração.",
-  "updatedAt": "2026-10-14T00:51:53.185518971Z",
+  "summary": "Plano detalhado de calibração geodésica das 22 estações da Trensurb Linha 1 no centro das plataformas, implementação de filtro antirruído para o velocímetro (zero absoluto < 4 km/h), configuração de intervalo de GPS de 2 a 3 segundos para eficiência energética e histerese inteligente para detecção estável de parada na estação.",
+  "updatedAt": "2026-10-14T12:30:01.555861313Z",
   "requestFeedback": true,
   "userFacing": true
 }

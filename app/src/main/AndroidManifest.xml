@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:allowBackup="true"
@@ -26,6 +29,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Serviço de primeiro plano para rastreamento de GPS e exibição na tela de bloqueio -->
+        <service
+            android:name=".service.TrainTrackingService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
     </application>
 
 </manifest>
