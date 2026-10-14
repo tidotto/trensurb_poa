@@ -1,0 +1,6 @@
+{
+  "name": "Trensurb POA",
+  "description": "Rastreamento GPS em tempo real das 22 estações da Linha 1 do Trensurb Porto Alegre com aviso de próxima parada e alerta de desembarque.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

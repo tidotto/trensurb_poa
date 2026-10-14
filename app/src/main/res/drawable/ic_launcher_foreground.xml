@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="0"
+        android:translateY="0">
+        <!-- Railway Tracks at Bottom -->
+        <path
+            android:fillColor="#00E5FF"
+            android:pathData="M34,81 L74,81 L76,84 L32,84 Z" />
+        <path
+            android:fillColor="#80FFFFFF"
+            android:pathData="M38,76 L70,76 L71,78 L37,78 Z" />
+        <!-- Rail ties -->
+        <path
+            android:fillColor="#40FFFFFF"
+            android:pathData="M42,72 L45,84 L41,84 L38,72 Z M66,72 L70,84 L67,84 L63,72 Z" />
+
+        <!-- Train Body Main Outer Contour -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M38,26 C38,24 45,23 54,23 C63,23 70,24 70,26 L73,62 C73,68 67,71 54,71 C41,71 35,68 35,62 Z" />
+
+        <!-- Windshield -->
+        <path
+            android:fillColor="#003B73"
+            android:pathData="M41,31 C43,29 48,28.5 54,28.5 C60,28.5 65,29 67,31 L68,46 C68,47 67,48 65,48 L43,48 C41,48 40,47 40,46 Z" />
+
+        <!-- Windshield reflection streak -->
+        <path
+            android:fillColor="#40FFFFFF"
+            android:pathData="M44,32 L49,32 L45,46 L42,46 Z" />
+
+        <!-- Front Accent Stripe (Trensurb Yellow/Green band) -->
+        <path
+            android:fillColor="#FFC107"
+            android:pathData="M36,52 L72,52 L71.5,56 L36.5,56 Z" />
+
+        <!-- Left Headlight -->
+        <path
+            android:fillColor="#00E676"
+            android:pathData="M41,61 C41,59.5 43,59.5 45,61 C45,62.5 43,62.5 41,61 Z" />
+
+        <!-- Right Headlight -->
+        <path
+            android:fillColor="#00E676"
+            android:pathData="M63,61 C63,59.5 65,59.5 67,61 C67,62.5 65,62.5 63,61 Z" />
+
+        <!-- Central High Beam -->
+        <path
+            android:fillColor="#003B73"
+            android:pathData="M52,25.5 C52,24.8 53,24.5 54,24.5 C55,24.5 56,24.8 56,25.5 C56,26.2 55,26.5 54,26.5 C53,26.5 52,26.2 52,25.5 Z" />
+    </group>
+</vector>

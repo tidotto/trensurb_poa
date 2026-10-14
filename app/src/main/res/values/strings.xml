@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">Trensurb POA</string>
+    <string name="station_status_at_station">Na estação</string>
+    <string name="station_status_approaching">Aproximando-se</string>
+    <string name="station_status_in_transit">Em trânsito</string>
+    <string name="next_stop_label">Próxima Parada</string>
+    <string name="destination_label">Destino</string>
+    <string name="direction_novo_hamburgo">Sentido Novo Hamburgo</string>
+    <string name="direction_mercado">Sentido Mercado (Porto Alegre)</string>
+    <string name="direction_detecting">Detectando sentido…</string>
+    <string name="btn_select_destination">Definir Destino</string>
+    <string name="btn_clear_destination">Cancelar Destino</string>
+    <string name="location_permission_title">Permissão de Localização</string>
+    <string name="location_permission_desc">O Trensurb POA precisa acessar o GPS para identificar em qual estação você está e avisar a próxima parada.</string>
+    <string name="btn_grant_permission">Ativar GPS e Continuar</string>
+    <string name="alert_arrival_title">Prepare-se para desembarcar!</string>
+    <string name="alert_arrival_message">O trem está chegando na sua estação de destino.</string>
+</resources>
