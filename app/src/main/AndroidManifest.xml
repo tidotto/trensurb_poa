@@ -36,6 +36,15 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <!-- Receiver para desarmar o alarme de desembarque a partir da notificação -->
+        <receiver
+            android:name=".receiver.AlarmDismissReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.receiver.ACTION_DISMISS_ALARM" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

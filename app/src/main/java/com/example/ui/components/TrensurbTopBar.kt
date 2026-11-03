@@ -6,6 +6,8 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.GpsNotFixed
 import androidx.compose.material.icons.filled.Speed
@@ -49,7 +52,9 @@ fun TrensurbTopBar(
     hasGpsFix: Boolean,
     speedKmH: Float,
     direction: TrainDirection,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isProjectingByTime: Boolean = false,
+    onOpenTimetable: () -> Unit = {}
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "gps_pulse")
     val pulseAlpha by infiniteTransition.animateFloat(
@@ -144,9 +149,15 @@ fun TrensurbTopBar(
                     }
 
                     // GPS Indicator Pill
+                    val (statusLabel, statusColor, isPulsing) = when {
+                        isProjectingByTime -> Triple("Estimando", WarningAmber, true)
+                        hasGpsFix -> Triple("GPS Ativo", RailGreen, false)
+                        else -> Triple("Buscando", WarningAmber, true)
+                    }
+
                     Surface(
                         shape = RoundedCornerShape(16.dp),
-                        color = if (hasGpsFix) RailGreen.copy(alpha = 0.15f) else WarningAmber.copy(alpha = 0.15f),
+                        color = statusColor.copy(alpha = 0.15f),
                         modifier = Modifier.testTag("gps_status_pill")
                     ) {
                         Row(
@@ -157,15 +168,15 @@ fun TrensurbTopBar(
                                 modifier = Modifier
                                     .size(8.dp)
                                     .clip(CircleShape)
-                                    .background(if (hasGpsFix) RailGreen else WarningAmber)
-                                    .alpha(if (hasGpsFix) 1f else pulseAlpha)
+                                    .background(statusColor)
+                                    .alpha(if (isPulsing) pulseAlpha else 1f)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = if (hasGpsFix) "GPS Ativo" else "Buscando",
+                                text = statusLabel,
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Bold,
-                                    color = if (hasGpsFix) RailGreen else WarningAmber
+                                    color = statusColor
                                 )
                             )
                         }
@@ -183,21 +194,57 @@ fun TrensurbTopBar(
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Train,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = direction.label,
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f, fill = false)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Train,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = direction.label,
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                maxLines = 1
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
+                            modifier = Modifier
+                                .testTag("top_bar_timetable_button")
+                                .clickable { onOpenTimetable() }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AccessTime,
+                                    contentDescription = "Consultar horários oficiais",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Horários",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     }
                 }
             }

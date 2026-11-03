@@ -28,10 +28,16 @@ Você não precisa manter a tela do telefone acesa nem o aplicativo aberto consu
 ### 4. Alerta de desembarque em duas etapas
 Ao escolher a sua estação de destino, o aplicativo gerencia dois alertas:
 - Alerta de aproximação: disparado quando o trem alcança a estação anterior ou entra no raio de aproximação do destino, sugerindo a preparação para saída.
-- Alerta de chegada: disparado no momento em que o trem encosta na plataforma de destino, com vibração diferenciada, aviso sonoro e acendimento automático da tela do aparelho para chamar a sua atenção mesmo com o telefone guardado.
+- Alerta de chegada contínuo: disparado no momento em que o trem encosta na plataforma de destino, emitindo pulso vibratório rítmico, aviso sonoro em canal de alarme e acendimento da tela até o desarme pelo botão "Desembarquei / Desligar Alarme", evitando que o passageiro perca a estação mesmo se estiver dormindo ou com fones de ouvido.
 
 ### 5. Diagrama linear do metrô
 Um mapa esquemático interativo exibe todas as 22 estações em ordem sequencial, com indicação visual de estações já percorridas, posição atual, próxima parada e destino final, além de suportar modos visuais com alto contraste.
+
+### 6. Consulta de horários e frequências oficiais
+O aplicativo disponibiliza a grade horária oficial da Trensurb para dias úteis, sábados, domingos e feriados em ambos os sentidos (partidas de Mercado e partidas de Novo Hamburgo). O passageiro pode verificar o intervalo programado no momento em que abre o app (headway de 8 a 15 minutos), as próximas partidas estimadas do terminal e a indicação de faixas de pico.
+
+### 7. Teste de bolso e atalhos rápidos
+Permite testar previamente a intensidade do alarme guardando o aparelho no bolso com contagem regressiva de 5 segundos, além de disponibilizar atalhos de um toque para os destinos mais frequentes da rotina do usuário.
 
 ---
 
@@ -40,11 +46,12 @@ Um mapa esquemático interativo exibe todas as 22 estações em ordem sequencial
 Para garantir precisão e estabilidade durante o uso prático em um trem real em movimento, foram implementadas as seguintes soluções técnicas:
 
 - Calibração georreferenciada no centro das plataformas: as coordenadas de todas as 22 estações foram ajustadas exatamente no eixo central das plataformas ferroviárias sobre os trilhos.
+- Projeção temporal em perda de sinal (Dead Reckoning): se o sinal de satélite for interrompido por estruturas de concreto ou coberturas metálicas por mais de 14 segundos em movimento, o sistema assume uma projeção baseada no tempo nominal de percurso entre paradas, sinalizando o status na barra superior e evitando telas congeladas até a reconexão.
 - Filtro antirruído de velocidade (Deadband): leituras de velocidade inferiores a 4 km/h geradas por oscilações de satélites são tratadas como zero absoluto, evitando que o aplicativo mostre pequenas velocidades irreais quando o trem está completamente parado.
 - Suavização por Média Móvel Exponencial (EMA): a velocidade informada no painel passa por um amortecimento para evitar picos abruptos causados por túneis ou estruturas metálicas de estações.
 - Histerese espacial de entrada e saída: para evitar alternâncias falsas entre "Na Estação" e "Em Trânsito" durante o embarque e desembarque, a entrada na estação ocorre a 350 metros (com baixa velocidade) ou 250 metros, e a saída somente é confirmada após o trem superar 350 a 420 metros em velocidade de deslocamento.
 - Serviço de primeiro plano (Foreground Service): utilização de serviço vinculado a notificação persistente com tipo location, garantindo compatibilidade com políticas de energia do Android 10 ao Android 14+.
-- WakeLock de tela: acionamento pontual do gerenciador de energia do dispositivo para iluminar o display na tela de bloqueio quando os alertas de chegada são emitidos.
+- WakeLock de tela e canal STREAM_ALARM: acionamento com prioridade de alarme e iluminação de tela na tela de bloqueio quando a chegada é detectada.
 
 ---
 

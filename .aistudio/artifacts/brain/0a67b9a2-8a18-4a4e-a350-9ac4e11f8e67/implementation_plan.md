@@ -1,124 +1,105 @@
-# Calibração Geodésica e Otimização do GPS - Trensurb POA
+# Plano de Engenharia: Confiabilidade de Alarmes e Usabilidade no Bolso
 
-Plano de ajuste milimétrico das coordenadas das 22 estações da Linha 1 no centro das plataformas de passageiros, refinamento do velocímetro com filtro antirruído para paradas do trem e configuração do provedor de GPS com equilíbrio entre alta precisão e economia de bateria.
-
-## Decisões Confirmadas com o Usuário
-
-- **Calibração das Estações**: Recalibração de **todas as 22 estações** da Linha 1 no ponto central exato das plataformas de embarque e trilhos, corrigindo as distorções registradas nos testes de campo (como Luiz Pasteur, Fátima, Niterói, São Pedro, Aeroporto e Anchieta).
-- **Tratamento de Velocidade Parado**: Aplicação de filtro antirruído com **zero absoluto (deadband)** quando a velocidade for inferior a 4 km/h, eliminando oscilações de 1 a 3 km/h geradas pelo jitter de GPS enquanto o trem estiver imobilizado na plataforma.
-- **Taxa de Atualização do GPS**: Intervalo padrão balanceado de **2 a 3 segundos** (2500ms com intervalo mínimo de 1500ms) para garantir leituras contínuas sem drenagem excessiva da bateria do celular.
+Plano de aprimoramento da arquitetura do aplicativo Trensurb POA, focado em transformar o app no copiloto definitivo para o passageiro diário do trem, assegurando que o alarme desperte o passageiro com precisão absoluta mesmo com o aparelho guardado no bolso ou com fones de ouvido, e garantindo resiliência operacional caso o GPS perca satélites em coberturas de concreto e túneis através de projeção temporal (Dead Reckoning).
 
 ---
 
-## 1. Visão Geral e Diagnóstico dos Testes de Campo
+### Decisões Confirmadas com o Usuário
 
-Ao analisar as fotos reais tiradas pelo usuário durante o trajeto de trem, foram identificados os fatores exatos que causavam as divergências:
-
-1. **Deslocamento de Centro de Coordenada**:
-   - Várias estações estavam cadastradas com coordenadas do entorno urbano (ex: praça ou avenida de acesso) em vez da plataforma ferroviária central.
-   - Isso gerava leituras de 400m a 800m mesmo com o trem fisicamente parado na estação (ex: *São Pedro a 537m*, *Luiz Pasteur a 838m*, *Fátima a 662m*, *Niterói a 1.1 km*).
-2. **Oscilação de Velocidade com Trem Imobilizado**:
-   - Quando o trem para na plataforma, o efeito Doppler e a reflexão eletromagnética em tetos metálicos provocam pequenas oscilações de velocidade (2 a 7 km/h).
-3. **Alternância entre "Na estação" e "Última registrada"**:
-   - O raio fixo de 250m ficava muito no limite para plataformas longas (composições da Trensurb de 4 ou 8 carros medem cerca de 100m a 200m).
+- **Prioridade Estratégica**: Usabilidade e confiabilidade máxima dos alarmes no bolso.
+- **Resiliência de Sinal**: Projeção estimada por tempo (Dead Reckoning ferroviário) até o restabelecimento do sinal de satélite.
+- **Configuração de Energia**: Manter comportamento padrão nativo do Android sem telas adicionais de aviso de fabricante.
 
 ---
 
-## 2. Arquitetura da Solução e Fluxo de Dados
+## 1. Visão Geral e Conceito
+
+O objetivo é eliminar qualquer chance de o passageiro perder a estação de desembarque, mesmo em cenários adversos típicos de transporte público: passageiro dormindo, fones de ouvido com cancelamento de ruído, celular dentro da mochila ou perda momentânea de sinal de satélite em áreas cobertas de estações centrais.
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│              FusedLocationProviderClient                │
-│   • Priority.PRIORITY_HIGH_ACCURACY                     │
-│   • Interval: 2500ms | MinUpdateInterval: 1500ms        │
-│   • SmallestDisplacement: 1.0m                          │
-└────────────────────────────┬────────────────────────────┘
-                             │ Location Updates
-                             ▼
-┌─────────────────────────────────────────────────────────┐
-│               TrainLocationTracker                      │
-│   • Deadband Filter: speed < 4 km/h -> 0 km/h           │
-│   • Exponential Moving Average (EMA) para suavização    │
-│   • Detecção de perda momentânea de sinal               │
-└────────────────────────────┬────────────────────────────┘
-                             │ Processed Location & Speed
-                             ▼
-┌─────────────────────────────────────────────────────────┐
-│                   TripViewModel                         │
-│   • Catálogo Recalibrado: 22 Estações no centro exato   │
-│   • Histerese de Chegada:                               │
-│       - Raio de Entrada: 350m                           │
-│       - Raio de Saída: 450m (impede oscilações)         │
-│       - Se velocidade < 10 km/h: travamento imediato    │
-│   • Próxima parada e ETA baseados no deslocamento real  │
-└────────────────────────────┬────────────────────────────┘
-                             │ StateFlow<TripUiState>
-                             ▼
-┌─────────────────────────────────────────────────────────┐
-│               Interface Compose (UI)                    │
-│   • Status "VOCÊ ESTÁ NA ESTAÇÃO" com pulso verde       │
-│   • Distância precisa até o centro da plataforma        │
-│   • Velocímetro estável exibindo "0 km/h" quando parado │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                   PIPELINE DE CONFIABILIDADE                │
+├─────────────────┬───────────────────┬───────────────────────┤
+│  Entrada GPS    │   Filtro & Perda  │  Alarme de Desembarque│
+│  - Satélites OK │   - Histerese OK  │  - Pulso Contínuo     │
+│  - Perda Fix ───┼─► - Dead Reckoning│  - Audio USAGE_ALARM  │
+│                     (Projeção tempo)│  - WakeLock Display   │
+│                                     │  - Desarme Tátil      │
+└─────────────────┴───────────────────┴───────────────────────┘
 ```
 
 ---
 
-## 3. Plano de Calibração Geodésica das 22 Estações
+## 2. Experiência do Usuário e Design de Interação
 
-Recalibraremos a tabela `TrensurbData.STATIONS` com coordenadas geodésicas (WGS84) alinhadas ao centro das plataformas sobre a via férrea:
+### 2.1 Alarme de Desembarque Contínuo com Desarme Seguro
+- **Problema resolvido**: O alarme anterior tocava apenas uma vez. Se o passageiro estivesse em sono profundo, um único bip de 700ms poderia passar despercebido.
+- **Nova experiência**:
+  - Ao entrar na plataforma de destino, o alarme entra em **modo de atenção contínua**: pulso vibratório rítmico e aviso sonoro intermitente a cada 3 segundos.
+  - A tela de bloqueio acende com notificação persistente de alta prioridade contendo o botão de ação rápida: **"Desembarquei / Desligar Alarme"**.
+  - O alarme cessa imediatamente ao tocar no botão de desarme ou ao afastar-se da estação.
 
-| Nº | Estação | Cidade | Coordenadas Alvo da Plataforma | Correção Principal |
-|:---|:---|:---|:---|:---|
-| 1 | **Mercado** | Porto Alegre | `-30.02781, -51.22978` | Centro do terminal de desembarque |
-| 2 | **Rodoviária** | Porto Alegre | `-30.02347, -51.21985` | Plataforma sob a passarela |
-| 3 | **São Pedro** | Porto Alegre | `-30.00342, -51.20786` | Corrigido offset de ~530m para os trilhos |
-| 4 | **Farrapos** | Porto Alegre | `-29.99615, -51.19692` | Centro da plataforma elevada |
-| 5 | **Aeroporto** | Porto Alegre | `-29.99420, -51.19060` | Corrigido offset de ~520m (integração Aeromóvel) |
-| 6 | **Anchieta** | Porto Alegre | `-29.97585, -51.18520` | Corrigido offset de ~450m |
-| 7 | **Niterói** | Canoas | `-29.95750, -51.17980` | Corrigido offset de ~1.1 km |
-| 8 | **Fátima** | Canoas | `-29.93720, -51.17720` | Corrigido offset de ~660m |
-| 9 | **Canoas / La Salle** | Canoas | `-29.92240, -51.18020` | Plataforma central de Canoas |
-| 10 | **Mathias Velho** | Canoas | `-29.90760, -51.18240` | Plataforma central |
-| 11 | **São Luís / Ulbra** | Canoas | `-29.89240, -51.18510` | Plataforma central |
-| 12 | **Petrobras** | Canoas | `-29.87620, -51.18680` | Ajustado para os trilhos da REFAP |
-| 13 | **Esteio** | Esteio | `-29.85680, -51.18280` | Plataforma da estação Esteio |
-| 14 | **Luiz Pasteur** | Sapucaia do Sul | `-29.84380, -51.18050` | Corrigido offset crítico de ~830m |
-| 15 | **Sapucaia** | Sapucaia do Sul | `-29.82670, -51.14650` | Plataforma central de Sapucaia |
-| 16 | **Unisinos** | São Leopoldo | `-29.79420, -51.14880` | Plataforma de acesso ao campus |
-| 17 | **São Leopoldo** | São Leopoldo | `-29.76120, -51.14450` | Plataforma central de São Leopoldo |
-| 18 | **Rio dos Sinos** | São Leopoldo | `-29.74950, -51.14150` | Plataforma elevada Rio dos Sinos |
-| 19 | **Santo Afonso** | Novo Hamburgo | `-29.73050, -51.13780` | Plataforma elevada |
-| 20 | **Industrial** | Novo Hamburgo | `-29.70920, -51.13420` | Plataforma elevada Industrial |
-| 21 | **Fenac** | Novo Hamburgo | `-29.69850, -51.13250` | Plataforma elevada junto à rodoviária |
-| 22 | **Novo Hamburgo** | Novo Hamburgo | `-29.68650, -51.13080` | Terminal final da Linha 1 |
+### 2.2 Projeção Temporal Inteligente (Dead Reckoning Ferroviário)
+- **Problema resolvido**: Em coberturas metálicas espessas (ex.: Mercado, São Pedro ou dias de tempestade severa), o sinal de GPS pode degradar por 1 a 2 minutos.
+- **Nova experiência**:
+  - Se o GPS não emitir leitura válida por mais de 15 segundos em movimento, o sistema ativa suavemente o estado **"Estimando por tempo decorrido"**.
+  - Com base na velocidade média cadastrada no trecho (~45 km/h, cerca de 2,5 minutos entre estações), o relógio avança a previsão sem deixar o usuário sem retorno.
+  - Quando o sinal de satélite é restabelecido, a posição é reconciliada instantaneamente sem saltos bruscos.
+
+### 2.3 Atalhos de Destino Rápido (Casa & Trabalho)
+- No card de destino, inclusão de 2 chips de acesso rápido customizáveis pelo passageiro:
+  - Exemplo: "Trabalho (Mercado)" e "Casa (Unisinos)".
+  - Um único toque define o destino e arma o alerta para a viagem do dia, sem necessidade de percorrer o seletor com 22 estações.
 
 ---
 
-## 4. Refinamento de Lógica no Rastreador e ViewModel
+## 3. Decisões Técnicas e Trade-offs
 
-### A. Filtro Antirruído de Velocidade (`TrainLocationTracker`)
-- Quando a velocidade bruta for `< 1.1 m/s` (~3.96 km/h):
-  - Força `speedKmH = 0f`.
-- Quando em movimento:
-  - Aplica suavização com Média Móvel Exponencial (EMA) para eliminar leituras erráticas.
-  - Intervalo de atualização configurado para **2500ms** (fastest: **1500ms**).
+### Decisão 1: Alarme com Categoria USAGE_ALARM e Canal Crítico
+- **Abordagem**: Utilizar `AudioAttributes.USAGE_ALARM` no canal de notificação e no gerador sonoro do `AlertHelper`.
+- **Por que**: Notificações convencionais (`USAGE_NOTIFICATION`) podem ser abafadas por modos de silêncio ou fones de ouvido bluetooth. O canal de alarme garante prioridade de entrega no bolso.
+- **Alternativa descartada**: Disparar alarme de mídia contínuo (MediaPlayer com arquivo .mp3 pesado), descartado para manter o APK leve e evitar consumo desnecessário de memória.
 
-### B. Histerese e Travamento de Estação (`TripViewModel`)
-- **Raio de Detecção Adaptativo**:
-  - Se a velocidade do trem for baixa (`< 15 km/h`) e a distância até a estação for `< 350m`: classifica imediatamente como **`AT_STATION`** (*"Você está na estação"*).
-  - Permanece em **`AT_STATION`** até que o trem se afaste mais de **420m** e atinja velocidade de cruzeiro (`> 15 km/h`), evitando que o card fique piscando entre *"Na estação"* e *"Em trânsito"* enquanto os passageiros embarcam.
-- **Detecção Confiável da Próxima Parada**:
-  - Enquanto estiver parado na estação (ex: Anchieta), a próxima parada é travada na estação seguinte no sentido da viagem (ex: Aeroporto no sentido Mercado), evitando que a estação atual seja exibida como próxima parada ao mesmo tempo.
+### Decisão 2: Dead Reckoning Baseado em Tabela de Tempos Inter-Estações
+- **Abordagem**: Modelar a matriz de tempo nominal de travessia entre paradas adjacentes (média de 140 a 180 segundos por trecho).
+- **Por que**: A ferrovia é um ambiente linear unidirecional perfeito para projeção temporal determinística. Se o trem partiu de Rodoviária e perdeu sinal há 120 segundos, ele está necessariamente desacelerando para São Pedro.
 
 ---
 
-## 5. Plano de Validação e Testes
+## 4. Arquitetura e Componentes Técnicos
 
-1. **Testes Automatizados (Robolectric / Unitários)**:
-   - Teste de filtro antirruído: verificar se velocidades de 1.5 km/h, 2.8 km/h e 3.9 km/h retornam exatamente `0 km/h`.
-   - Teste de histerese de estação: simular entrada na estação a 300m com 5 km/h e verificar transição imediata para `AT_STATION`.
-   - Teste das distâncias recalibradas para todas as 22 estações.
-2. **Compilação e Verificação**:
-   - Executar `compile_applet` para assegurar build sem erros.
-   - Executar suíte de testes `:app:testDebugUnitTest`.
+```
+┌─────────────────────────────────────────────────────────────┐
+│                 ARQUITETURA DE DADOS & FLUXO                │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  [FusedLocationProviderClient]                              │
+│              │                                              │
+│              ▼                                              │
+│  [TrainLocationTracker] ──(Perda > 15s)──► [DeadReckoner]   │
+│              │                                  │           │
+│              ▼                                  │           │
+│        [TripViewModel] ◄────────────────────────┘           │
+│         │          │                                        │
+│         │          ▼                                        │
+│         │     [TrainTrackingService] (Lockscreen Notif)     │
+│         ▼                                                   │
+│   [AlertHelper] ──► WakeLock + USAGE_ALARM + Loop Háptico   │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Componentes Envolvidos:
+1. **`com.example.util.AlertHelper`**:
+   - Loop de vibração contínuo com timeout de segurança (30 segundos máximos).
+   - Ação de desarme (`dismissAlert()`) via Intent de Notificação e UI.
+   - Atributos sonoros configurados para canal de alarme com toque nítido.
+2. **`com.example.location.TrainLocationTracker`**:
+   - Detecção de perda de sinal de GPS após limiar configurado.
+   - Projeção de posição por dead reckoning linear baseado no último sentido confirmado.
+3. **`com.example.viewmodel.TripViewModel`**:
+   - Armazenamento em preferências locais de até 2 destinos rápidos (Casa e Trabalho).
+   - Gerenciamento do estado de desarme do alarme ativo.
+4. **`com.example.ui.components.DestinationCard`**:
+   - Inclusão dos botões de acesso rápido aos destinos frequentes.
+   - Botão para "Testar Alarme no Bolso" com contagem regressiva de 5 segundos.

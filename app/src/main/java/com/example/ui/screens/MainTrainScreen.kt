@@ -8,6 +8,7 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,12 +27,14 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -45,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -63,12 +67,14 @@ import com.example.ui.components.DestinationPickerDialog
 import com.example.ui.components.NextStationCard
 import com.example.ui.components.PermissionRequestCard
 import com.example.ui.components.StationDetailBottomSheet
+import com.example.ui.components.TimetableBottomSheet
 import com.example.ui.components.TrainLineDiagram
 import com.example.ui.components.TrensurbTopBar
 import com.example.ui.theme.TrensurbBlue
 import com.example.ui.theme.WarningAmber
 import com.example.viewmodel.TripViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainTrainScreen(
     viewModel: TripViewModel,
@@ -78,6 +84,7 @@ fun MainTrainScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     var showDestinationPicker by remember { mutableStateOf(false) }
+    var showTimetableSheet by remember { mutableStateOf(false) }
 
     val notificationLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -155,7 +162,9 @@ fun MainTrainScreen(
                 hasGpsFix = uiState.hasGpsFix,
                 speedKmH = uiState.speedKmH,
                 direction = uiState.direction,
-                modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)
+                isProjectingByTime = uiState.isProjectingByTime,
+                modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars),
+                onOpenTimetable = { showTimetableSheet = true }
             )
         },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -293,12 +302,81 @@ fun MainTrainScreen(
                     alertStage = uiState.destinationAlertStage,
                     soundEnabled = uiState.soundEnabled,
                     vibrationEnabled = uiState.vibrationEnabled,
+                    isAlarmActive = uiState.isAlarmActive,
+                    pocketTestCountdown = uiState.pocketTestCountdown,
+                    favoriteStations = uiState.favoriteStations,
                     onToggleSound = { viewModel.toggleSound() },
                     onToggleVibration = { viewModel.toggleVibration() },
-                    onTestAlert = { viewModel.testAlert() },
+                    onTestAlert = { viewModel.startPocketTest(countdown = 5) },
+                    onCancelPocketTest = { viewModel.cancelPocketTest() },
+                    onDismissAlarm = { viewModel.dismissActiveAlarm() },
                     onSelectDestinationClick = { showDestinationPicker = true },
+                    onSelectStation = { station -> viewModel.setDestination(station) },
                     onClearDestinationClick = { viewModel.clearDestination() }
                 )
+            }
+
+            // Card de Horários e Partidas Oficiais da Trensurb
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("timetable_shortcut_card"),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(TrensurbBlue.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AccessTime,
+                                    contentDescription = null,
+                                    tint = TrensurbBlue,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Horários e Partidas Oficiais",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Intervalos de 8 a 15 min • 05h às 23h",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        OutlinedButton(
+                            onClick = { showTimetableSheet = true },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.testTag("btn_open_timetable_card")
+                        ) {
+                            Text("Ver Grade", fontSize = 13.sp)
+                        }
+                    }
+                }
             }
 
             // Modo Segundo Plano e Tela de Bloqueio
@@ -341,7 +419,7 @@ fun MainTrainScreen(
             ) {
                 ArrivalAlertBanner(
                     destination = uiState.destinationStation!!,
-                    onDismiss = { viewModel.dismissArrivalAlert() }
+                    onDismiss = { viewModel.dismissActiveAlarm() }
                 )
             }
         }
@@ -355,7 +433,8 @@ fun MainTrainScreen(
                 isCurrentDestination = station.id == uiState.destinationStation?.id,
                 onSetDestination = { s -> viewModel.setDestination(s) },
                 onClearDestination = { viewModel.clearDestination() },
-                onDismiss = { viewModel.dismissStationDetails() }
+                onDismiss = { viewModel.dismissStationDetails() },
+                onOpenTimetable = { showTimetableSheet = true }
             )
         }
 
@@ -368,6 +447,14 @@ fun MainTrainScreen(
                     showDestinationPicker = false
                 },
                 onDismiss = { showDestinationPicker = false }
+            )
+        }
+
+        // Timetable Modal Bottom Sheet
+        if (showTimetableSheet) {
+            TimetableBottomSheet(
+                initialDirection = uiState.direction,
+                onDismiss = { showTimetableSheet = false }
             )
         }
     }

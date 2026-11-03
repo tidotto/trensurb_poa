@@ -76,7 +76,7 @@ fun ArrivalAlertBanner(
                 Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color.White)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Entendido, vou desembarcar!",
+                    text = "Desembarquei / Desligar Alarme",
                     style = MaterialTheme.typography.titleSmall.copy(
                         fontWeight = FontWeight.Bold,
                         color = Color.White

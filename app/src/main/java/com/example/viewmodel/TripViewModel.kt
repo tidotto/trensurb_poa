@@ -13,6 +13,8 @@ import com.example.model.TrainDirection
 import com.example.model.TrensurbData
 import com.example.service.TrainTrackingService
 import com.example.util.AlertHelper
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,6 +43,26 @@ class UserPreferencesRepository(context: Context) {
 
     fun isVibrationEnabled(): Boolean = prefs.getBoolean("vibration_enabled", true)
     fun setVibrationEnabled(enabled: Boolean) = prefs.edit().putBoolean("vibration_enabled", enabled).apply()
+
+    fun getFavoriteStationIds(): Set<Int> {
+        val raw = prefs.getStringSet("favorite_station_ids", null)
+        return if (raw.isNullOrEmpty()) {
+            setOf(1, 9, 16, 22) // Padrões principais: Mercado, Canoas, Unisinos, Novo Hamburgo
+        } else {
+            raw.mapNotNull { it.toIntOrNull() }.toSet()
+        }
+    }
+
+    fun toggleFavorite(stationId: Int): Set<Int> {
+        val current = getFavoriteStationIds().toMutableSet()
+        if (current.contains(stationId)) {
+            current.remove(stationId)
+        } else {
+            current.add(stationId)
+        }
+        prefs.edit().putStringSet("favorite_station_ids", current.map { it.toString() }.toSet()).apply()
+        return current
+    }
 }
 
 enum class DestinationAlertStage {
@@ -79,7 +101,11 @@ data class TripUiState(
     val diagramThemeMode: DiagramThemeMode = DiagramThemeMode.DARK,
     val isHighContrastMode: Boolean = false,
     val isPreciseLocationGranted: Boolean = true,
-    val isBackgroundTrackingEnabled: Boolean = false
+    val isBackgroundTrackingEnabled: Boolean = false,
+    val isProjectingByTime: Boolean = false,
+    val isAlarmActive: Boolean = false,
+    val pocketTestCountdown: Int? = null,
+    val favoriteStations: List<Station> = emptyList()
 )
 
 class TripViewModel(application: Application) : AndroidViewModel(application) {
@@ -102,12 +128,16 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         val initialTheme = preferencesRepo.getThemeMode()
         val initialSound = preferencesRepo.isSoundEnabled()
         val initialVibration = preferencesRepo.isVibrationEnabled()
+        val initialFavIds = preferencesRepo.getFavoriteStationIds()
+        val initialFavStations = TrensurbData.STATIONS.filter { it.id in initialFavIds }
+
         _uiState.update {
             it.copy(
                 diagramThemeMode = initialTheme,
                 isHighContrastMode = initialTheme == DiagramThemeMode.HIGH_CONTRAST,
                 soundEnabled = initialSound,
-                vibrationEnabled = initialVibration
+                vibrationEnabled = initialVibration,
+                favoriteStations = initialFavStations
             )
         }
 
@@ -126,6 +156,19 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             locationTracker.hasGpsFix.collect { fix ->
                 _uiState.update { it.copy(hasGpsFix = fix) }
+            }
+        }
+        viewModelScope.launch {
+            locationTracker.isProjectingByTime.collect { projecting ->
+                _uiState.update { it.copy(isProjectingByTime = projecting) }
+                if (_uiState.value.isBackgroundTrackingEnabled) {
+                    updateLiveTrackingNotification(_uiState.value)
+                }
+            }
+        }
+        viewModelScope.launch {
+            AlertHelper.isAlarmActive.collect { active ->
+                _uiState.update { it.copy(isAlarmActive = active) }
             }
         }
         viewModelScope.launch {
@@ -188,8 +231,45 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private var pocketTestJob: Job? = null
+
     fun dismissArrivalAlert() {
-        _uiState.update { it.copy(arrivalAlertTriggered = false) }
+        dismissActiveAlarm()
+    }
+
+    fun dismissActiveAlarm() {
+        alertHelper.dismissAlert()
+        _uiState.update { it.copy(arrivalAlertTriggered = false, isAlarmActive = false) }
+    }
+
+    fun startPocketTest(countdown: Int = 5) {
+        pocketTestJob?.cancel()
+        pocketTestJob = viewModelScope.launch {
+            for (c in countdown downTo 1) {
+                _uiState.update { it.copy(pocketTestCountdown = c) }
+                delay(1000L)
+            }
+            _uiState.update { it.copy(pocketTestCountdown = null, arrivalAlertTriggered = true) }
+            val destName = _uiState.value.destinationStation?.name ?: "Estação de Teste (Simulação de Bolso)"
+            alertHelper.playArrivalAlert(
+                stationName = destName,
+                soundEnabled = _uiState.value.soundEnabled,
+                vibrationEnabled = _uiState.value.vibrationEnabled
+            )
+        }
+    }
+
+    fun cancelPocketTest() {
+        pocketTestJob?.cancel()
+        pocketTestJob = null
+        _uiState.update { it.copy(pocketTestCountdown = null) }
+        alertHelper.dismissAlert()
+    }
+
+    fun toggleFavoriteStation(stationId: Int) {
+        val updatedIds = preferencesRepo.toggleFavorite(stationId)
+        val favStations = TrensurbData.STATIONS.filter { it.id in updatedIds }
+        _uiState.update { it.copy(favoriteStations = favStations) }
     }
 
     fun toggleSound() {
@@ -221,12 +301,7 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun testAlert() {
-        val destName = _uiState.value.destinationStation?.name ?: "Mercado"
-        alertHelper.playArrivalAlert(
-            stationName = destName,
-            soundEnabled = _uiState.value.soundEnabled,
-            vibrationEnabled = _uiState.value.vibrationEnabled
-        )
+        startPocketTest(countdown = 5)
     }
 
     fun showStationDetails(station: Station) {
@@ -588,6 +663,9 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
                 append("\n")
             }
             append("⚡ Velocidade do trem: ${state.speedKmH.roundToInt()} km/h")
+            if (state.isProjectingByTime) {
+                append("\n⚠️ Sinal GPS fraco • Estimando por tempo decorrido")
+            }
         }
 
         TrainTrackingService.updateLiveTrip(getApplication(), title, text, bigText)
