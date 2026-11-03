@@ -7,6 +7,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.location.TrainLocationTracker
 import com.example.model.DiagramThemeMode
+import com.example.model.LiveStationArrival
+import com.example.model.LiveSystemInfo
+import com.example.model.LiveTrain
+import com.example.service.TrensurbLiveRepository
 import com.example.model.Station
 import com.example.model.StationStatus
 import com.example.model.TrainDirection
@@ -105,7 +109,11 @@ data class TripUiState(
     val isProjectingByTime: Boolean = false,
     val isAlarmActive: Boolean = false,
     val pocketTestCountdown: Int? = null,
-    val favoriteStations: List<Station> = emptyList()
+    val favoriteStations: List<Station> = emptyList(),
+    val liveSystemInfo: LiveSystemInfo = LiveSystemInfo(),
+    val liveTrains: List<LiveTrain> = emptyList(),
+    val liveStationArrivals: List<LiveStationArrival> = emptyList(),
+    val showLineStatusDialog: Boolean = false
 )
 
 class TripViewModel(application: Application) : AndroidViewModel(application) {
@@ -113,6 +121,8 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
     private val preferencesRepo = UserPreferencesRepository(application)
     private val locationTracker = TrainLocationTracker(application)
     private val alertHelper = AlertHelper(application)
+    private val liveRepository = TrensurbLiveRepository(application)
+    private var liveTelemetryJob: Job? = null
 
     private val _uiState = MutableStateFlow(TripUiState())
     val uiState: StateFlow<TripUiState> = _uiState.asStateFlow()
@@ -674,5 +684,40 @@ class TripViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         locationTracker.stopTracking()
+    }
+
+    fun startLiveTelemetryPolling() {
+        liveTelemetryJob?.cancel()
+        liveTelemetryJob = viewModelScope.launch {
+            while (true) {
+                try {
+                    val systemInfo = liveRepository.getLiveSystemInfo()
+                    val activeTrains = liveRepository.getActiveTrains()
+                    _uiState.update {
+                        it.copy(
+                            liveSystemInfo = systemInfo,
+                            liveTrains = activeTrains
+                        )
+                    }
+                    _uiState.value.selectedStationDetails?.let { station ->
+                        loadStationArrivals(station.id)
+                    }
+                } catch (_: Exception) {}
+                delay(25000)
+            }
+        }
+    }
+
+    fun loadStationArrivals(stationId: Int) {
+        viewModelScope.launch {
+            try {
+                val arrivals = liveRepository.getUpcomingArrivals(stationId)
+                _uiState.update { it.copy(liveStationArrivals = arrivals) }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun setLineStatusDialogVisible(visible: Boolean) {
+        _uiState.update { it.copy(showLineStatusDialog = visible) }
     }
 }

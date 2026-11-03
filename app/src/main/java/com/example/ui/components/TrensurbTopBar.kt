@@ -42,6 +42,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.TrainDirection
+import com.example.model.LiveSystemInfo
+import com.example.model.LineOperationStatus
 import com.example.ui.theme.RailGreen
 import com.example.ui.theme.TrensurbBlue
 import com.example.ui.theme.WarningAmber
@@ -54,6 +56,8 @@ fun TrensurbTopBar(
     direction: TrainDirection,
     modifier: Modifier = Modifier,
     isProjectingByTime: Boolean = false,
+    liveSystemInfo: LiveSystemInfo = LiveSystemInfo(),
+    onOpenStatusDetails: () -> Unit = {},
     onOpenTimetable: () -> Unit = {}
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "gps_pulse")
@@ -123,6 +127,35 @@ fun TrensurbTopBar(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // Line Status Pill (Trensurb Live)
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = liveSystemInfo.lineStatus.color.copy(alpha = 0.15f),
+                        modifier = Modifier
+                            .testTag("line_status_pill")
+                            .clickable { onOpenStatusDetails() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(liveSystemInfo.lineStatus.color)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (liveSystemInfo.lineStatus == LineOperationStatus.NORMAL) "Linha Normal" else "Restrição",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = liveSystemInfo.lineStatus.color
+                                )
+                            )
+                        }
+                    }
+
                     // Speed Indicator Pill
                     Surface(
                         shape = RoundedCornerShape(16.dp),

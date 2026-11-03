@@ -32,7 +32,9 @@ import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -163,6 +165,8 @@ fun MainTrainScreen(
                 speedKmH = uiState.speedKmH,
                 direction = uiState.direction,
                 isProjectingByTime = uiState.isProjectingByTime,
+                liveSystemInfo = uiState.liveSystemInfo,
+                onOpenStatusDetails = { viewModel.setLineStatusDialogVisible(true) },
                 modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars),
                 onOpenTimetable = { showTimetableSheet = true }
             )
@@ -397,10 +401,12 @@ fun MainTrainScreen(
                     destinationStation = uiState.destinationStation,
                     direction = uiState.direction,
                     stationEtas = uiState.stationEtas,
+                    liveTrains = uiState.liveTrains,
                     themeMode = uiState.diagramThemeMode,
                     onThemeModeSelected = { mode -> viewModel.setDiagramThemeMode(mode) },
                     onStationClick = { station ->
                         viewModel.showStationDetails(station)
+                        viewModel.loadStationArrivals(station.id)
                     }
                 )
             }
@@ -434,7 +440,61 @@ fun MainTrainScreen(
                 onSetDestination = { s -> viewModel.setDestination(s) },
                 onClearDestination = { viewModel.clearDestination() },
                 onDismiss = { viewModel.dismissStationDetails() },
-                onOpenTimetable = { showTimetableSheet = true }
+                onOpenTimetable = { showTimetableSheet = true },
+                aeromovelStatus = uiState.liveSystemInfo.aeromovelStatus,
+                liveArrivals = uiState.liveStationArrivals
+            )
+        }
+
+        // Line Status Modal Dialog
+        if (uiState.showLineStatusDialog) {
+            AlertDialog(
+                onDismissRequest = { viewModel.setLineStatusDialogVisible(false) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .background(uiState.liveSystemInfo.lineStatus.color)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = uiState.liveSystemInfo.lineStatus.label,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                },
+                text = {
+                    Column {
+                        Text(
+                            text = uiState.liveSystemInfo.statusMessage,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        if (!uiState.liveSystemInfo.affectedSection.isNullOrEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Trecho afetado: ${uiState.liveSystemInfo.affectedSection}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = WarningAmber
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Última atualização: ${uiState.liveSystemInfo.lastUpdatedFormatted}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { viewModel.setLineStatusDialogVisible(false) },
+                        colors = ButtonDefaults.buttonColors(containerColor = TrensurbBlue)
+                    ) {
+                        Text("Entendido")
+                    }
+                }
             )
         }
 

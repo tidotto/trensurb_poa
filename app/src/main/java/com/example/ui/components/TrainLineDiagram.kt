@@ -54,7 +54,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.DiagramThemeMode
 import com.example.model.Station
-import com.example.model.StationStatus
+import com.example.model.LiveTrain
+import com.example.model.Station
+import com.example.model.LiveTrainStatus
 import com.example.model.TrainDirection
 import com.example.model.TrensurbData
 import com.example.ui.theme.HighContrastBlack
@@ -78,6 +80,7 @@ fun TrainLineDiagram(
     destinationStation: Station?,
     direction: TrainDirection,
     stationEtas: Map<Int, String> = emptyMap(),
+    liveTrains: List<LiveTrain> = emptyList(),
     themeMode: DiagramThemeMode = DiagramThemeMode.DARK,
     onThemeModeSelected: (DiagramThemeMode) -> Unit = {},
     onStationClick: (Station) -> Unit,
@@ -198,6 +201,7 @@ fun TrainLineDiagram(
                     pulseScale = pulseScale,
                     themeMode = themeMode,
                     stationEta = stationEta,
+                    liveTrains = liveTrains,
                     onClick = { onStationClick(station) }
                 )
             }
@@ -522,6 +526,11 @@ private fun StationTimelineRow(
 
             // Connecting Track Line below the circle
             if (!isLast) {
+                val trainBetween = liveTrains.firstOrNull {
+                    it.betweenStations?.let { (from, to) ->
+                        (from == station.id && to == station.id + 1) || (from == station.id + 1 && to == station.id)
+                    } ?: false
+                }
                 val trackColor = when {
                     isHighContrast && isPassed -> HighContrastTrackMuted
                     isHighContrast -> HighContrastCyan
@@ -580,6 +589,38 @@ private fun StationTimelineRow(
                         },
                         color = titleColor
                     )
+
+                    // Live Train Badge on Platform
+                    val trainAtStation = liveTrains.firstOrNull { it.stationId == station.id }
+                    if (trainAtStation != null) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = TrensurbBlue.copy(alpha = 0.2f),
+                            border = BorderStroke(1.dp, TrensurbBlue)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Train,
+                                    contentDescription = null,
+                                    tint = TrensurbBlue,
+                                    modifier = Modifier.size(10.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "${trainAtStation.trainId}",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = TrensurbBlue,
+                                        fontSize = 10.sp
+                                    )
+                                )
+                            }
+                        }
+                    }
 
                     // Badges for Current / Next / Destination
                     if (isCurrent) {
