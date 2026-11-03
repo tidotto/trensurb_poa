@@ -53,10 +53,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.DiagramThemeMode
-import com.example.model.Station
 import com.example.model.LiveTrain
 import com.example.model.Station
-import com.example.model.LiveTrainStatus
+import com.example.model.StationStatus
 import com.example.model.TrainDirection
 import com.example.model.TrensurbData
 import com.example.ui.theme.HighContrastBlack
@@ -341,6 +340,7 @@ private fun StationTimelineRow(
     pulseScale: Float,
     themeMode: DiagramThemeMode,
     stationEta: String?,
+    liveTrains: List<LiveTrain> = emptyList(),
     onClick: () -> Unit
 ) {
     val isHighContrast = themeMode == DiagramThemeMode.HIGH_CONTRAST
@@ -526,10 +526,13 @@ private fun StationTimelineRow(
 
             // Connecting Track Line below the circle
             if (!isLast) {
-                val trainBetween = liveTrains.firstOrNull {
-                    it.betweenStations?.let { (from, to) ->
-                        (from == station.id && to == station.id + 1) || (from == station.id + 1 && to == station.id)
-                    } ?: false
+                val trainBetween = liveTrains.firstOrNull { train ->
+                    val pair = train.betweenStations
+                    if (pair != null) {
+                        (pair.first == station.id && pair.second == station.id + 1) || (pair.first == station.id + 1 && pair.second == station.id)
+                    } else {
+                        false
+                    }
                 }
                 val trackColor = when {
                     isHighContrast && isPassed -> HighContrastTrackMuted
